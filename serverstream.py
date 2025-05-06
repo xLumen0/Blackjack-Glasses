@@ -13,12 +13,12 @@ from time import time
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": ["http://127.0.0.1:3000", "http://192.168.1.89:5000"]}})
+CORS(app, resources={r"/*": {"origins": ["http://127.0.0.1:3000", "http://192.x.x.x.x:5000"]}})
 
 # Initialize RoboFlow client
 CLIENT = InferenceHTTPClient(
     api_url="https://serverless.roboflow.com",
-    api_key="FBZWDotevfrL2HPrtRkE"
+    api_key="your_api"
 )
 
 # Game state
@@ -84,7 +84,7 @@ def deal_initial_cards():
     used_cards = set()
     game_active = True
     logging.info("New Game Started")
-    logging.info("Please add a dealer card: Invoke-WebRequest -Uri http://192.168.1.89:5000/add_dealer_card -Method POST -Body '{\"card\":\"KC\"}' -ContentType 'application/json'")
+    logging.info("Please add a dealer card: Invoke-WebRequest -Uri http://192.x.x.x:5000/add_dealer_card -Method POST -Body '{\"card\":\"KC\"}' -ContentType 'application/json'")
 
 def dealer_play(temp_hand=None):
     """Use provided dealer hand."""
