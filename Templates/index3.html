@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blackjack Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #captured-card-img {
+            max-width: 100%;
+            height: auto;
+            border: 2px solid #4a5568;
+        }
+    </style>
+</head>
+<body class="bg-gray-800 text-white flex flex-col items-center min-h-screen p-4">
+    <h1 class="text-4xl font-bold mb-6">Blackjack Game</h1>
+    <div class="w-full max-w-4xl bg-gray-700 p-6 rounded-lg shadow-lg">
+        <!-- Captured Card -->
+        <div class="mb-6">
+            <h2 class="text-2xl font-semibold mb-2">Captured Card</h2>
+            <img id="captured-card-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='300'><rect width='100%' height='100%' fill='gray'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='20'>No Image</text></svg>" alt="No card captured" class="rounded">
+        </div>
+        <!-- Game State -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+                <h2 class="text-2xl font-semibold mb-2">Your Cards</h2>
+                <p id="player-hand" class="text-lg">No cards</p>
+                <p id="player-value" class="text-lg">Value: 0</p>
+            </div>
+            <div>
+                <h2 class="text-2xl font-semibold mb-2">Dealer Cards</h2>
+                <p id="dealer-upcard" class="text-lg">Not set</p>
+                <p id="dealer-hand" class="text-lg hidden">Full Hand: Not revealed</p>
+            </div>
+        </div>
+        <!-- Best Move and Game State -->
+        <div class="text-center mb-6">
+            <h2 class="text-2xl font-semibold mb-2">Best Move</h2>
+            <p id="recommendation" class="text-3xl font-bold text-yellow-400">Set dealer's upcard</p>
+            <h2 class="text-2xl font-semibold mt-4 mb-2">Game State</h2>
+            <p id="game-state" class="text-xl">Game Over</p>
+        </div>
+        <!-- Controls -->
+        <div class="flex flex-col items-center space-y-4">
+            <div class="flex space-x-4">
+                <input id="upcard-input" type="text" placeholder="Enter dealer upcard (e.g., KC)" class="p-2 rounded text-black">
+                <button onclick="setDealerUpcard()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Set Upcard</button>
+            </div>
+            <div class="flex space-x-4">
+                <button onclick="stand()" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Stand</button>
+                <button onclick="reset()" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Reset</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const NO_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='300'><rect width='100%' height='100%' fill='gray'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='20'>No Image</text></svg>";
+
+        function updateGameState() {
+            console.log('Fetching game state...');
+            fetch('/game_state')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Game state received:', data);
+                    const playerHand = document.getElementById('player-hand');
+                    const playerValue = document.getElementById('player-value');
+                    const dealerUpcard = document.getElementById('dealer-upcard');
+                    const dealerHand = document.getElementById('dealer-hand');
+                    const recommendation = document.getElementById('recommendation');
+                    const gameState = document.getElementById('game-state');
+                    const capturedCardImg = document.getElementById('captured-card-img');
+
+                    if (!playerHand || !playerValue || !dealerUpcard || !dealerHand || !recommendation || !gameState || !capturedCardImg) {
+                        console.error('DOM elements missing:', { playerHand, playerValue, dealerUpcard, dealerHand, recommendation, gameState, capturedCardImg });
+                        return;
+                    }
+
+                    playerHand.textContent = data.player_hand && data.player_hand.length ? data.player_hand.join(', ') : 'No cards';
+                    playerValue.textContent = `Value: ${data.player_value || 0}`;
+                    dealerUpcard.textContent = data.dealer_upcard || 'Not set';
+                    dealerHand.textContent = data.dealer_hand && data.dealer_hand.length ? `Full Hand: ${data.dealer_hand.join(', ')}` : 'Full Hand: Not revealed';
+                    dealerHand.classList.toggle('hidden', data.status === 'Active');
+                    recommendation.textContent = (data.recommendation || 'Set dealer's upcard').toUpperCase();
+                    recommendation.classList.toggle('text-green-400', data.recommendation && data.recommendation !== 'Set dealer's upcard');
+                    recommendation.classList.toggle('text-yellow-400', !data.recommendation || data.recommendation === 'Set dealer's upcard');
+                    gameState.textContent = data.outcome || data.status || 'Game Over';
+
+                    // Update captured card image
+                    const newSrc = `/captured_card?t=${new Date().getTime()}`;
+                    console.log('Attempting to load image:', newSrc);
+                    capturedCardImg.src = newSrc;
+                    capturedCardImg.onerror = () => {
+                        console.warn('Captured card image failed to load, using fallback');
+                        capturedCardImg.src = NO_IMAGE_SRC;
+                    };
+                })
+                .catch(error => {
+                    console.error('Error fetching game state:', error.message);
+                });
+        }
+
+        function setDealerUpcard() {
+            const upcard = document.getElementById('upcard-input').value.trim();
+            if (!upcard) {
+                console.warn('Upcard input is empty');
+                alert('Please enter a dealer upcard (e.g., KC)');
+                return;
+            }
+            console.log('Sending setDealerUpcard request:', upcard);
+            fetch('/set_dealer_upcard', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ upcard: upcard })
+            })
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Set upcard response:', data);
+                    if (data.error) {
+                        console.warn('Set upcard failed:', data.error);
+                        alert(data.error);
+                    } else {
+                        document.getElementById('upcard-input').value = '';
+                        updateGameState();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error setting upcard:', error.message);
+                    alert('Failed to set dealer upcard: ' + error.message);
+                });
+        }
+
+        function stand() {
+            console.log('Sending stand request');
+            fetch('/stand', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Stand response:', data);
+                    if (data.error) {
+                        console.warn('Stand failed:', data.error);
+                        alert(data.error);
+                    }
+                    updateGameState();
+                })
+                .catch(error => {
+                    console.error('Error standing:', error.message);
+                    alert('Failed to stand: ' + error.message);
+                });
+        }
+
+        function reset() {
+            console.log('Sending reset request');
+            fetch('/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Reset response:', data);
+                    updateGameState();
+                })
+                .catch(error => {
+                    console.error('Error resetting:', error.message);
+                    alert('Failed to reset: ' + error.message);
+                });
+        }
+
+        // Poll game state every 1 second
+        console.log('Starting game state polling');
+        setInterval(updateGameState, 1000);
+        // Initial update
+        updateGameState();
+    </script>
+</body>
+</html>

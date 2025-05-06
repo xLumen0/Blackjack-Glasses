@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>stAIke</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .card-display {
+            font-family: monospace;
+            letter-spacing: 0.1em;
+        }
+        #status-message {
+            transition: all 0.3s ease;
+        }
+        #captured-card-img {
+            max-width: 100%;
+            height: auto;
+        }
+        .logo {
+            width: 200px; /* Smaller logo */
+            height: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-800 text-white flex flex-col items-center min-h-screen p-2">
+    <img src="/static/staike.png" alt="StAIke Logo" class="logo mb-2">
+
+    <!-- Status Message -->
+    <div id="status-message" class="mb-2 p-2 rounded hidden text-sm"></div>
+
+    <div class="w-full max-w-5xl bg-gray-700 p-4 rounded-lg shadow-lg">
+        <!-- Captured Card -->
+        <div class="mb-4">
+            <h2 class="text-xl font-semibold mb-1">Captured Card</h2>
+            <div class="bg-gray-600 rounded-lg p-2 flex justify-center">
+                <img id="captured-card-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='225'><rect width='100%' height='100%' fill='%23555'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='16'>No Card Image</text></svg>" alt="No card captured" class="rounded max-h-48">
+            </div>
+        </div>
+
+        <!-- Game State and Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Left: Player and Dealer Cards -->
+            <div class="space-y-4">
+                <div class="bg-gray-600 p-3 rounded-lg">
+                    <h2 class="text-xl font-semibold mb-1">Your Cards</h2>
+                    <p id="player-hand" class="text-base card-display">No cards</p>
+                    <p id="player-value" class="text-lg font-bold mt-1">Value: 0</p>
+                </div>
+                <div class="bg-gray-600 p-3 rounded-lg">
+                    <h2 class="text-xl font-semibold mb-1">Dealer Cards</h2>
+                    <p id="dealer-hand" class="text-base card-display">No cards</p>
+                    <p id="dealer-value" class="text-base mt-1 hidden">Value: 0</p>
+                </div>
+            </div>
+
+            <!-- Right: Best Move and Controls -->
+            <div class="space-y-4">
+                <div class="bg-gray-600 p-3 rounded-lg text-center">
+                    <h2 class="text-xl font-semibold mb-1">Best Move</h2>
+                    <p id="recommendation" class="text-2xl font-bold text-yellow-400 mb-2">ADD DEALER CARD</p>
+                    <h2 class="text-xl font-semibold mb-1">Game State</h2>
+                    <p id="game-state" class="text-lg font-bold">Game Over</p>
+                </div>
+                <div class="bg-gray-600 p-3 rounded-lg flex flex-col items-center space-y-2">
+                    <div class="flex flex-col sm:flex-row gap-2 w-full">
+                        <input id="dealer-card-input" type="text" placeholder="Dealer card (e.g., KC)"
+                               class="p-2 rounded text-black w-full sm:w-40 text-sm">
+                        <button onclick="addDealerCard()"
+                                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded text-sm">
+                            Add Dealer
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap gap-2 justify-center">
+                        <button onclick="stand()"
+                                class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-3 rounded text-sm">
+                            Stand
+                        </button>
+                        <button onclick="reset()"
+                                class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-3 rounded text-sm">
+                            Reset
+                        </button>
+                        <button onclick="refreshCard()"
+                                class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-3 rounded text-sm">
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SERVER_URL = 'http://172.20.10.2:5000';
+        const NO_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='225'><rect width='100%' height='100%' fill='%23555'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='16'>No Card Image</text></svg>";
+
+        function fetchGameState() {
+            console.log('Fetching game state...');
+            fetch(`${SERVER_URL}/game_state`, { method: 'GET' })
+                .then(response => {
+                    console.log('Game state response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Game state received:', data);
+                    updateGameStateUI(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching game state:', error.message);
+                    showStatus(`Failed to fetch game state: ${error.message}`, 'error');
+                });
+        }
+
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status-message');
+            statusEl.textContent = message;
+            statusEl.className = 'mb-2 p-2 rounded text-sm';
+            statusEl.classList.add(type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-500' : 'bg-blue-500');
+            statusEl.classList.remove('hidden');
+            setTimeout(() => statusEl.classList.add('hidden'), 3000);
+        }
+
+        function refreshCard() {
+            const cardImg = document.getElementById('captured-card-img');
+            const newSrc = `${SERVER_URL}/captured_card?t=${new Date().getTime()}`;
+            console.log('Refreshing card image:', newSrc);
+            cardImg.src = newSrc;
+            cardImg.onerror = () => {
+                console.warn('Failed to load captured card image');
+                cardImg.src = NO_IMAGE_SRC;
+            };
+        }
+
+        function updateGameStateUI(data) {
+            console.log('Updating UI with data:', data);
+            const elements = {
+                playerHand: document.getElementById('player-hand'),
+                playerValue: document.getElementById('player-value'),
+                dealerHand: document.getElementById('dealer-hand'),
+                dealerValue: document.getElementById('dealer-value'),
+                recommendation: document.getElementById('recommendation'),
+                gameState: document.getElementById('game-state')
+            };
+
+            if (Object.values(elements).some(el => !el)) {
+                console.error('DOM elements missing:', elements);
+                return;
+            }
+
+            elements.playerHand.textContent = data.player_hand && data.player_hand.length ? data.player_hand.join(', ') : 'No cards';
+            elements.playerValue.textContent = `Value: ${data.player_value || 0}`;
+            elements.dealerHand.textContent = data.dealer_hand && data.dealer_hand.length ? data.dealer_hand.join(', ') : 'No cards';
+            elements.dealerValue.textContent = `Value: ${data.dealer_value || 0}`;
+            elements.dealerValue.classList.toggle('hidden', !data.dealer_hand || !data.dealer_hand.length);
+
+            const recommendation = data.recommendation || 'ADD DEALER CARD';
+            elements.recommendation.textContent = recommendation.toUpperCase();
+            elements.recommendation.className = 'text-2xl font-bold mb-2 ' + (
+                recommendation.toLowerCase() === 'hit' ? 'text-green-400' :
+                recommendation.toLowerCase() === 'stand' ? 'text-blue-400' : 'text-yellow-400'
+            );
+
+            elements.gameState.textContent = data.outcome || data.status || 'Game Over';
+            elements.gameState.className = 'text-lg font-bold ' + (
+                data.outcome ? 'text-red-300' : data.status === 'Active' ? 'text-green-300' : ''
+            );
+        }
+
+        function addDealerCard() {
+            const card = document.getElementById('dealer-card-input').value.trim();
+            console.log('Attempting to add dealer card:', card);
+            if (!card) {
+                console.warn('Dealer card input empty');
+                showStatus('Please enter a dealer card (e.g., KC)', 'error');
+                return;
+            }
+
+            fetch(`${SERVER_URL}/add_dealer_card`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ card })
+            })
+            .then(response => {
+                console.log('Add dealer card response status:', response.status);
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Add dealer card response:', data);
+                document.getElementById('dealer-card-input').value = '';
+                showStatus(`Added dealer card: ${card}`, 'success');
+                fetchGameState();
+            })
+            .catch(error => {
+                console.error('Error adding dealer card:', error.message);
+                showStatus(`Failed to add dealer card: ${error.message}`, 'error');
+            });
+        }
+
+        function stand() {
+            console.log('Attempting to stand');
+            fetch(`${SERVER_URL}/stand`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => {
+                console.log('Stand response status:', response.status);
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Stand response:', data);
+                showStatus('You chose to stand', 'info');
+                fetchGameState();
+            })
+            .catch(error => {
+                console.error('Error standing:', error.message);
+                showStatus(`Failed to stand: ${error.message}`, 'error');
+            });
+        }
+
+        function reset() {
+            console.log('Attempting to reset');
+            fetch(`${SERVER_URL}/reset`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => {
+                console.log('Reset response status:', response.status);
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Reset response:', data);
+                showStatus('Game reset', 'success');
+                fetchGameState();
+            })
+            .catch(error => {
+                console.error('Error resetting:', error.message);
+                showStatus(`Failed to reset: ${error.message}`, 'error');
+            });
+        }
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' && document.activeElement === document.getElementById('dealer-card-input')) {
+                addDealerCard();
+            } else if (event.key === 's' || event.key === 'S') {
+                stand();
+            } else if (event.key === 'r' || event.key === 'R') {
+                reset();
+            } else if (event.key === 'f' || event.key === 'F') {
+                refreshCard();
+            }
+        });
+
+        window.addEventListener('load', function() {
+            console.log('Page loaded, initializing...');
+            fetchGameState();
+            refreshCard();
+            setInterval(fetchGameState, 1000);
+            setInterval(refreshCard, 2000);
+        });
+    </script>
+</body>
+</html>

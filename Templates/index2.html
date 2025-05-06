@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blackjack Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .card-display {
+            font-family: monospace;
+            letter-spacing: 0.1em;
+        }
+        #status-message {
+            transition: all 0.3s ease;
+        }
+        #captured-card-img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-800 text-white flex flex-col items-center min-h-screen p-4">
+    <h1 class="text-4xl font-bold mb-6">Blackjack Game</h1>
+    
+    <!-- Status Message -->
+    <div id="status-message" class="mb-4 p-2 rounded hidden"></div>
+    
+    <div class="w-full max-w-4xl bg-gray-700 p-6 rounded-lg shadow-lg">
+        <!-- Captured Card -->
+        <div class="mb-6">
+            <h2 class="text-2xl font-semibold mb-2">Captured Card</h2>
+            <div class="bg-gray-600 rounded-lg p-4 flex justify-center">
+                <img id="captured-card-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='300'><rect width='100%' height='100%' fill='%23555'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='20'>No Card Image</text></svg>" alt="No card captured" class="rounded max-h-64">
+            </div>
+        </div>
+        
+        <!-- Game State -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div class="bg-gray-600 p-4 rounded-lg">
+                <h2 class="text-2xl font-semibold mb-2">Your Cards</h2>
+                <p id="player-hand" class="text-lg card-display">No cards</p>
+                <p id="player-value" class="text-xl font-bold mt-2">Value: 0</p>
+            </div>
+            <div class="bg-gray-600 p-4 rounded-lg">
+                <h2 class="text-2xl font-semibold mb-2">Dealer Cards</h2>
+                <p id="dealer-upcard" class="text-lg card-display">Not set</p>
+                <p id="dealer-hand" class="text-lg card-display mt-2">Full Hand: Not revealed</p>
+                <p id="dealer-value" class="text-lg mt-2 hidden">Value: 0</p>
+            </div>
+        </div>
+        
+        <!-- Best Move and Game State -->
+        <div class="text-center mb-6 bg-gray-600 p-4 rounded-lg">
+            <h2 class="text-2xl font-semibold mb-2">Best Move</h2>
+            <p id="recommendation" class="text-3xl font-bold text-yellow-400 mb-4">SET DEALER'S UPCARD</p>
+            <h2 class="text-2xl font-semibold mt-4 mb-2">Game State</h2>
+            <p id="game-state" class="text-xl font-bold">Game Over</p>
+        </div>
+        
+        <!-- Controls -->
+        <div class="flex flex-col items-center space-y-4 bg-gray-600 p-4 rounded-lg">
+            <div class="flex flex-wrap gap-4 justify-center">
+                <input id="upcard-input" type="text" placeholder="Dealer upcard (e.g., KC)" 
+                       class="p-2 rounded text-black w-full md:w-64">
+                <button onclick="setDealerUpcard()" 
+                        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                    Set Upcard
+                </button>
+            </div>
+            <div class="flex flex-wrap gap-4 justify-center">
+                <button onclick="stand()" 
+                        class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                    Stand
+                </button>
+                <button onclick="reset()" 
+                        class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                    Reset Game
+                </button>
+                <button onclick="refreshCard()" 
+                        class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+                    Refresh Card
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SERVER_URL = 'http://192.168.1.89:5000';
+        const NO_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='300'><rect width='100%' height='100%' fill='%23555'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='20'>No Card Image</text></svg>";
+
+        function fetchGameState() {
+            console.log('Fetching game state...');
+            fetch(`${SERVER_URL}/game_state`, { method: 'GET' })
+                .then(response => {
+                    console.log('Game state response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Game state received:', data);
+                    updateGameStateUI(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching game state:', error.message);
+                    showStatus(`Failed to fetch game state: ${error.message}`, 'error');
+                });
+        }
+        
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status-message');
+            statusEl.textContent = message;
+            statusEl.className = 'mb-4 p-2 rounded';
+            statusEl.classList.add(type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-500' : 'bg-blue-500');
+            statusEl.classList.remove('hidden');
+            setTimeout(() => statusEl.classList.add('hidden'), 3000);
+        }
+
+        function refreshCard() {
+            const cardImg = document.getElementById('captured-card-img');
+            const newSrc = `${SERVER_URL}/captured_card?t=${new Date().getTime()}`;
+            console.log('Refreshing card image:', newSrc);
+            cardImg.src = newSrc;
+            cardImg.onerror = () => {
+                console.warn('Failed to load captured card image');
+                cardImg.src = NO_IMAGE_SRC;
+            };
+        }
+
+        function updateGameStateUI(data) {
+            console.log('Updating UI with data:', data);
+            const elements = {
+                playerHand: document.getElementById('player-hand'),
+                playerValue: document.getElementById('player-value'),
+                dealerUpcard: document.getElementById('dealer-upcard'),
+                dealerHand: document.getElementById('dealer-hand'),
+                dealerValue: document.getElementById('dealer-value'),
+                recommendation: document.getElementById('recommendation'),
+                gameState: document.getElementById('game-state')
+            };
+
+            if (Object.values(elements).some(el => !el)) {
+                console.error('DOM elements missing:', elements);
+                return;
+            }
+
+            elements.playerHand.textContent = data.player_hand && data.player_hand.length ? data.player_hand.join(', ') : 'No cards';
+            elements.playerValue.textContent = `Value: ${data.player_value || 0}`;
+            elements.dealerUpcard.textContent = data.dealer_upcard !== "Not set" ? `Upcard: ${data.dealer_upcard}` : 'Not set';
+            
+            if (data.status === 'Active' && data.dealer_hand && data.dealer_hand.length) {
+                elements.dealerHand.textContent = `Full Hand: Hidden`;
+                elements.dealerHand.classList.remove('hidden');
+                elements.dealerValue.classList.add('hidden');
+            } else if (data.dealer_hand && data.dealer_hand.length) {
+                elements.dealerHand.textContent = `Full Hand: ${data.dealer_hand.join(', ')}`;
+                elements.dealerHand.classList.remove('hidden');
+                elements.dealerValue.textContent = `Value: ${data.dealer_value || 0}`;
+                elements.dealerValue.classList.remove('hidden');
+            } else {
+                elements.dealerHand.textContent = 'Full Hand: Not revealed';
+                elements.dealerValue.classList.add('hidden');
+            }
+            
+            const recommendation = data.recommendation || 'SET DEALER\'S UPCARD';
+            elements.recommendation.textContent = recommendation.toUpperCase();
+            elements.recommendation.className = 'text-3xl font-bold mb-4 ' + (
+                recommendation.toLowerCase() === 'hit' ? 'text-green-400' :
+                recommendation.toLowerCase() === 'stand' ? 'text-blue-400' : 'text-yellow-400'
+            );
+            
+            elements.gameState.textContent = data.outcome || data.status || 'Game Over';
+            elements.gameState.className = 'text-xl font-bold ' + (
+                data.outcome ? 'text-red-300' : data.status === 'Active' ? 'text-green-300' : ''
+            );
+        }
+
+        function setDealerUpcard() {
+            const upcard = document.getElementById('upcard-input').value.trim();
+            console.log('Attempting to set upcard:', upcard);
+            if (!upcard) {
+                console.warn('Upcard input empty');
+                showStatus('Please enter a dealer upcard (e.g., KC)', 'error');
+                return;
+            }
+            
+            fetch(`${SERVER_URL}/set_dealer_upcard`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ upcard })
+            })
+            .then(response => {
+                console.log('Set upcard response status:', response.status);
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Set upcard response:', data);
+                document.getElementById('upcard-input').value = '';
+                showStatus(`Dealer's upcard set to ${upcard}`, 'success');
+                fetchGameState();
+            })
+            .catch(error => {
+                console.error('Error setting upcard:', error.message);
+                showStatus(`Failed to set upcard: ${error.message}`, 'error');
+            });
+        }
+
+        function stand() {
+            console.log('Attempting to stand');
+            fetch(`${SERVER_URL}/stand`, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => {
+                console.log('Stand response status:', response.status);
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Stand response:', data);
+                showStatus('You chose to stand', 'info');
+                fetchGameState();
+            })
+            .catch(error => {
+                console.error('Error standing:', error.message);
+                showStatus(`Failed to stand: ${error.message}`, 'error');
+            });
+        }
+
+        function reset() {
+            console.log('Attempting to reset');
+            fetch(`${SERVER_URL}/reset`, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => {
+                console.log('Reset response status:', response.status);
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Reset response:', data);
+                showStatus('Game reset', 'success');
+                fetchGameState();
+            })
+            .catch(error => {
+                console.error('Error resetting:', error.message);
+                showStatus(`Failed to reset: ${error.message}`, 'error');
+            });
+        }
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' && document.activeElement === document.getElementById('upcard-input')) {
+                setDealerUpcard();
+            } else if (event.key === 's' || event.key === 'S') {
+                stand();
+            } else if (event.key === 'r' || event.key === 'R') {
+                reset();
+            } else if (event.key === 'f' || event.key === 'F') {
+                refreshCard();
+            }
+        });
+
+        window.addEventListener('load', function() {
+            console.log('Page loaded, initializing...');
+            fetchGameState();
+            refreshCard();
+            setInterval(fetchGameState, 1000);
+            setInterval(refreshCard, 2000);
+        });
+    </script>
+</body>
+</html>
